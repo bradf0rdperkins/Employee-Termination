@@ -79,15 +79,17 @@
     $validusername=$true
     $validmanager=$true
     $my_username=$usertextfield.Text
-    $manager=$managertextfield.Text  
+    $disabledUser=Get-ADUser $my_username -Properties displayName,sn,givenName | select displayName,sn,givenName
+
+    $manager=$managertextfield.Text
+    $managerProps=Get-ADUser $manager -Properties displayName,sn,givenName,mail | select displayName,sn,givenName,mail
     $global:keepgoing=$true
     $Date = (Get-Date -format MM/dd/yyyy)
 
     #Set variables for email
     $mailbox = get-mailbox -identity $my_username
     $Supervisor = $manager
-    $SupEmail = $Supervisor + "@company.com"
-    #$SupFullName = Get-ADUser -Filter {name -like "$($Supervisor.DisplayName)"} -Properties * | select samaccountname
+    $SupEmail = $managerProps.mail
     $UPN = "@companydomain.com"
     $NTDomain = "companydomain"
     $ExchangeServer = "mailserver"
@@ -95,7 +97,8 @@
     $EmailAddress = "user@company.com"
     $From = "Administrators@company.com"
     $SMTPServer = "mail.company.com"
-    $Body = $my_username + "'s account has been disabled and you have been granted permissions to their mailbox. Please contact IT with questions or submit a helpdesk ticket for assistance with accessing the mailbox.`r`n`r`nThank you,`r`ncompany IT Administration Team"
+    $subject = "Account Disabled [" + $disabledUser.DisplayName + "]"
+    $Body = $managerProps.givenName + ",`r`n`r`n" + $disabledUser.givenName + " " + $disabledUser.sn + "'s account has been disabled and you have been granted permissions to their mailbox. Please contact IT with questions or submit a helpdesk ticket for assistance with accessing the mailbox.`r`n`r`nThank you,`r`ncompany IT Administration Team"
    
     #Evaluate if the user exists
     try{Get-ADUser $my_username}
@@ -136,7 +139,7 @@
  
         #Move user to the disabled accounts OU
         Get-ADUser $my_username | Move-ADObject -TargetPath "OU=Users,OU=Disabled Accounts,DC=companydomain,DC=com"
-         $my_message = "Moved " + $my_username + " to the Disabled Accounts\Users OU `r`n"
+         $my_message = "Moved " + $disabledUser.displayName + " to the Disabled Accounts\Users OU `r`n"
          OutToBox($my_message)
 
         # Remove user from groups 
@@ -148,7 +151,7 @@
                 # Remove user from group
                 remove-adgroupmember -Identity $group.name -Member $my_username -Confirm:$false
                 # Write progress to screen
-                $my_message = "Removed " + $my_username + " from " + $group.name + "`r`n"
+                $my_message = "Removed " + $disabledUser.displayName + " from " + $group.name + "`r`n"
                 OutToBox($my_message)
                 # Define and save group names into filename
                 $grouplogfile = "\\server\Private\AD Scripts\Logs\" + $my_username + "_removedGroups.txt"
@@ -166,10 +169,15 @@
             {
                 #Grant permissions to the user's supervisor
                 $Mailbox | Add-MailboxPermission -user $Supervisor -AccessRights FullAccess
-                $my_message = $Supervisor + " now has access to " + $my_username + "'s mailbox`r`n"
+                $my_message = $managerProps.displayName + " now has access to " + $disabledUser.givenName + " " + $disabledUser.sn + "'s mailbox`r`n"
                 OutToBox($my_message)
     
                 $gobutton.Enabled = $true
+
+                #Send email to supervisor notifying them of the disabled account and granted permissions
+                Send-MailMessage -To $SupEmail -From $From -Subject $subject -Body $Body -SmtpServer $SMTPServer
+                 $my_message = "Sending email to " + $managerProps.displayName + "`r`n"
+                 OutToBox($my_message)
                 }
             else
             {
@@ -178,11 +186,6 @@
                     outtobox("Manager does not exist`r`n")
                 }
             }
-
-        #Send email to supervisor notifying them of the disabled account and granted permissions
-        Send-MailMessage -To $SupEmail -From $From -Subject "Account Disabled [$my_username]" -Body $Body -SmtpServer $SMTPServer
-         $my_message = "Sending email to " + $Supervisor + "`r`n"
-         OutToBox($my_message)
 
         $outputtextbox.appendtext("Done!`r`n")
         $gobutton.Enabled = $true
