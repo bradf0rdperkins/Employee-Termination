@@ -1,7 +1,5 @@
 # Employee-Termination
-Powershell script that performs multiple tasks after an employee leaves the company
-
-This is my first Powershell script that we needed at our company to simplify the account termination process. 
+This is my first Powershell script built to simplify the account termination process. 
 
 It does the following:
 - Sets the Recipient Limit to 0 in Exchange
